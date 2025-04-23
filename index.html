@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MedVet by HFR and CJS</title>
+    <style>
+     body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: aliceblue;
+        }
+        .container {
+            text-align: center;
+            background-color: white;
+            padding: 20px 50px;
+            border-radius: 20px;
+            box-shadow: 0 0 60px rgba(0, 0, 0, 0.1);
+        }
+
+        textarea {
+            width: 70%;
+            padding: 2px;
+            border-radius: 2px;
+            
+        }
+
+        button {
+            margin: 5px 5px;
+            font-size: 12px;
+            padding: 8px 30px;
+        }
+
+        .glow-button {
+            font-size: 12px;
+            padding: 8px 30px;
+            color: #fff;
+            background-color: #007BFF;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            position: relative;
+        }
+
+        .glow-button:hover {
+            background-color: #0056b3;
+        }
+
+        .glow-button:click{
+            background-color: #013974
+        }
+        .glow-button:hidden{
+            display: none;
+        }
+        .hidden {
+            display: none;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+    <h1>MedVet</h1>
+    <h4><mark>Disclaimer: This tool is not meant to replace thorough daily medicine reconciliation for your patients. 
+        </br>MedVet does not save any PHI.</mark></h4>
+    <h4>Please be sure to use the correct format. The list should be left justified, numbered - 1), 2), etc.</h4>
+    <h5>Example Medicine: 1)   ACETAMINOPHEN TAB  1000MG PO QID PRN                   ACTIVE</h5>
+    <h5>Example Output: ACETAMINOPHEN 1000MG QID PRN</h5>
+    <textarea id="input" rows="10" cols="15" placeholder="Copy and paste the INPATIENT medication list from your progress note here, starting with the 1) medicine"></textarea><br>
+    <button class="glow-button" id="medRecButton" onclick="extractInfo()">Med Rec!</button>
+    <button onclick="clearFields()">Clear</button>
+    <h2>Medicine Names, Doses, and Schedules</h2>
+    <textarea id="output" rows="10" placeholder="After you click Med Rec! the medicine names, doses, and schedules will appear here" ></textarea><br>
+    <button class = "glow-button" id="copyButton" onclick="copyOutput()">Copy</button>
+    <br>
+    <button onclick="toLowerCase()">Lowercase</button>
+    <button onclick="toUpperCase()">Uppercase</button>
+    <button onclick="toSentenceCase()">Sentence Case</button>
+    <h2>Medicine Count</h2>
+    <textarea id="countOutput" rows="1" readonly></textarea><br><br>
+    <label><input type="checkbox" id="showPrnCheckbox" onchange="togglePrnOutput()"> Show just PRN Medications</label>
+    <h2 id="prnTitle" class="hidden">PRN Medications</h2>
+    <textarea id="prnOutput" rows="15" class="hidden"></textarea><br>
+    <button class = "glow-button hidden" id="copyButtonPRN" onclick="copyOutputPRN()">Copy PRN Meds</button>
+    <h2 id="prnCountTitle" class="hidden">PRN Medication Count</h2>
+    <textarea id="countPRNOutput" rows="1" readonly class="hidden"></textarea>
+    <h3> Do not forget to double check the output and Medicine Count against your orders.</h3> 
+    <h3>If you have any feedback or suggestions, please email hramji@tulane.edu.</h3>
+    <h5>Created by Husayn F. Ramji, MD and Charles J. Santos, MD</h5>
+    <h5> Version 2.0</h5>
+    <h6>Disclaimer: MedVet is a tool that processes healthcare-related information, including Protected Health Information (PHI), for the purpose of generating results and providing assistance. 
+        </br>However, no PHI is stored, saved, or transmitted to any server. 
+        </br>All processing is done securely and temporarily during your session. Please do not input personally identifiable information (e.g., patient names, dates of birth, medical record numbers).
+        </br>By using MedVet, you acknowledge and agree to use de-identified data only.</h6>
+    <input type="hidden" name="All Rights belong to Husayn F. Ramji, MD and Charles J. Santos, MD" id="hiddenField">
+
+    </body>
+    
+    </div>
+    <script>
+        const textArea = document.getElementById('input');
+        const button = document.getElementById('medRecButton');
+        const button2 = document.getElementById('copyButton');
+        const prnOutput = document.getElementById('prnOutput');
+        const showPrnCheckbox = document.getElementById('showPrnCheckbox');
+      
+        // ----------------------------
+        // Helper: Clean Medication Name
+        // ----------------------------
+        function cleanMedicineName(name) {
+          // Remove commas and parenthetical text.
+          name = name.replace(/[,]/g, " ").replace(/\(.*?\)/g, "").trim();
+          // Remove common tokens (for oral orders) but leave tokens like "EC" or "HCL"
+          // Added "SOLN" to the list to also catch topical solution markers.
+          const removals = ["TAB", "CAP", "CHEWABLE", "ORAL", "SOLN", "SOLN,TOP", "TOP", "SUSP", "XTRA", "PEG", "TUBE"];
+          const tokens = name.split(/\s+/);
+          const filtered = tokens.filter(token => !removals.includes(token.toUpperCase()));
+          return filtered.join(' ').trim().toUpperCase();
+        }
+      
+        // ----------------------------
+        // Special Topical Processing
+        // (Not used for this input.)
+        function processTopical(line, results) {
+          return false;
+        }
+      // -------------------------------------
+      // 2) processHypoglycemiaMeds
+      // -------------------------------------
+      // For Dextrose gels, Dextrose 50% injection, Glucagon
+      function processHypoglycemiaMeds(line, results) {
+        let cleanLine = line.replace(/^\d+\)\s+/, "").replace(/\bACTIVE\b/gi, "").trim();
+    
+        // Dextrose Gel (e.g. "DEXTROSE 24GM/31GM GEL,ORAL  24GM PO PRN ...")
+        if (/DEXTROSE/i.test(cleanLine) && /GEL/i.test(cleanLine)) {
+          // Output: "DEXTROSE 24GM/31GM GEL PRN"
+          let doseMatch = cleanLine.match(/(\d+GM\/\d+GM)\s+GEL/i);
+          let doseStr = doseMatch ? doseMatch[1].toUpperCase() : "24GM/31GM";
+          results.push(`DEXTROSE ${doseStr} GEL PRN`);
+          return true;
+        }
+    
+        // Dextrose 50% injection (e.g. "DEXTROSE 50% INJ,SOLN  25GM/50ML IV ONCE PRN ...")
+        if (/DEXTROSE 50%/i.test(cleanLine) && /INJ,SOLN/i.test(cleanLine)) {
+          // Output: "DEXTROSE 50% INJ 25GM/50ML IV PRN"
+          let doseMatch = cleanLine.match(/INJ,SOLN\s+([\d\.]+GM\/[\dA-Z]+)/i);
+          let doseStr = doseMatch ? doseMatch[1].toUpperCase() : "25GM/50ML";
+          results.push(`DEXTROSE 50% INJ ${doseStr} IV PRN`);
+          return true;
+        }
+    
+        // Glucagon (e.g. "GLUCAGON 1MG/VIL INJ 1MG/1VIAL IM PRN ...")
+        if (/GLUCAGON/i.test(cleanLine)) {
+          // Output: "GLUCAGON 1MG/VIL INJ 1MG/1VIAL IM PRN"
+          let medMatch = cleanLine.match(/(GLUCAGON\s+\S+\s+INJ)/i);
+          let medName = medMatch ? medMatch[1].toUpperCase() : "GLUCAGON 1MG/VIL INJ";
+          let doseMatch = cleanLine.match(/(\d+MG\/\d+VIAL)/i);
+          let dose = doseMatch ? doseMatch[1].toUpperCase() : "1MG/1VIAL";
+          results.push(`${medName} ${dose} IM PRN`);
+          return true;
+        }
+    
+        return false;
+      }
+      
+        // ----------------------------
+        // Special Infusion Processing
+        // ----------------------------
+        function processInfusion(line, results) {
+          let cleanLine = line.replace(/^\d+\)\s+/, "").replace(/\bACTIVE\b/gi, "").trim();
+      
+          // --- AZITHROMYCIN ---
+          if (/AZITHROMYCIN/i.test(cleanLine) && /INFUSE/i.test(cleanLine)) {
+            // Expected: "AZITHROMYCIN INJ,PWDR AZITHROMYCIN 500 MG in SODIUM ... INFUSE OVER 60 MINUTES IV DAILY"
+            let medName = "AZITHROMYCIN INJ";
+            let doseMatch = cleanLine.match(/AZITHROMYCIN\s+\S+\s+AZITHROMYCIN\s+(\d+\s*MG)/i);
+            let dose = doseMatch ? doseMatch[1].toUpperCase() : "";
+            let scheduleMatch = cleanLine.match(/IV\s+([A-Z0-9]+)\b/i);
+            let schedule = scheduleMatch ? scheduleMatch[1].toUpperCase() : "";
+            if (!schedule) {
+              scheduleMatch = cleanLine.match(/([A-Z]+)$/i);
+              schedule = scheduleMatch ? scheduleMatch[1].toUpperCase() : "";
+            }
+            results.push(`${medName} ${dose} ${schedule}`.trim());
+            return true;
+          }
+      
+          // --- VANCOMYCIN ---
+          if (/VANCOMYCIN/i.test(cleanLine)) {
+            let medMatch = cleanLine.match(/^(VANCOMYCIN\s+HCL)/i);
+            let medName = medMatch ? medMatch[1].trim().toUpperCase() : "VANCOMYCIN HCL";
+            let doseMatch = cleanLine.match(/INJ\s+(\d+(?:\.\d+)?MG)/i);
+            let dose = doseMatch ? doseMatch[1].toUpperCase() : "";
+            let scheduleMatch = cleanLine.match(/IV\s+([A-Z0-9]+)\b/i);
+            let schedule = scheduleMatch ? scheduleMatch[1].toUpperCase() : "";
+            results.push(`${medName} ${dose} ${schedule}`.trim());
+            return true;
+          }
+      
+          // --- CEFTRIAXONE ---
+          if (/CEFTRIAXONE/i.test(cleanLine)) {
+            let medMatch = cleanLine.match(/^(CEFTRIAXONE\s+INJ)/i);
+            let medName = medMatch ? medMatch[1].trim().toUpperCase() : "CEFTRIAXONE INJ";
+            // Capture dose before the slash (e.g. "1GM" from "1GM/1VIAL")
+            let doseMatch = cleanLine.match(/(\d+(?:\.\d+)?[A-Z]*)\/[A-Z0-9]+/i);
+            let dose = doseMatch ? doseMatch[1].toUpperCase() : "";
+            let scheduleMatch = cleanLine.match(/IV\s+([A-Z0-9]+)\b/i);
+            let schedule = scheduleMatch ? scheduleMatch[1].toUpperCase() : "";
+            results.push(`${medName} ${dose} IV ${schedule}`.trim());
+            return true;
+          }
+          
+          return false;
+        }
+        
+      
+            // ----------------------------
+            // Special Other Processing (Non-infusions)
+            // ----------------------------
+            function processOther(line, results) {
+            let cleanLine = line.replace(/^\d+\)\s+/, "").replace(/\bACTIVE\b/gi, "").trim();
+            cleanLine = cleanLine.replace(/\s+/g, " ");
+            
+            // Remove any extra topical instructions that start with "apply"
+            // (e.g. "apply to affected area as needed for skin protection")
+            if (/apply/i.test(cleanLine)) {
+                cleanLine = cleanLine.split(/\bapply\b/i)[0].trim();
+            }
+            
+            // --- HEPARIN (special case: output "HEPARIN GTT") ---
+            if (/HEPARIN\s+NA/i.test(cleanLine) && /DEXTROSE\s+5%/i.test(cleanLine)) {
+                results.push("HEPARIN GTT");
+                return;
+            }
+
+            if (/ALBUTEROL\/IPRATROPIUM/i.test(line)) {
+                let scheduleMatch = line.match(/((?:Q(?:ID|6H|[A-Z0-9]+))|BID|TID)/i);
+                let schedule = scheduleMatch ? scheduleMatch[1].toUpperCase() : "";
+                let prn = /PRN/i.test(line) ? " PRN" : "";
+                results.push(`DUONEB NEB ${schedule}${prn}`.trim());
+                return;
+            }
+            
+            // --- INSULIN NPH ---
+            if (/INSULIN\s+NPH/i.test(cleanLine)) {
+                let medName = "INSULIN NPH";
+                let doseMatch = cleanLine.match(/INSULIN\s+NPH.*?(\d+\s*UNITS?)/i);
+                let dose = doseMatch ? doseMatch[1].toUpperCase() : "";
+                let routeMatch = cleanLine.match(/\b(SC)\b/i);
+                let route = routeMatch ? routeMatch[1].toUpperCase() : "";
+                let scheduleMatch = cleanLine.match(/(Q[A-Z0-9]+)/i);
+                let schedule = scheduleMatch ? scheduleMatch[1].toUpperCase() : "";
+                results.push(`${medName} ${dose} ${route} ${schedule}`.trim());
+                return;
+            }
+            
+            if (/INSULIN,ASPART,HUMAN/i.test(line) && /SLIDING SCALE/i.test(line)) {
+                results.push("INSULIN SSI");
+                return;
+            }
+
+            // --- SC Heparin
+            if (/HEPARIN\s+NA\s+5000/i.test(cleanLine)) {
+                let scheduleMatch = cleanLine.match(/\b(Q\d+H)\b/i);
+                let schedule = scheduleMatch ? scheduleMatch[1].toUpperCase() : "";
+                results.push(`HEPARIN NA 5000 SC ${schedule}`);
+                return;
+            }
+
+            // --- ENOXAPARIN ---
+            if (/ENOXAPARIN/i.test(cleanLine)) {
+                let medName = "ENOXAPARIN INJ";
+                let doseMatch = cleanLine.match(/ENOXAPARIN\s+INJ\s+(\d+MG)/i);
+                let dose = doseMatch ? doseMatch[1].toUpperCase() : "";
+                let scheduleMatch = cleanLine.match(/SC\s+([A-Z0-9]+)/i);
+                let schedule = scheduleMatch ? scheduleMatch[1].toUpperCase() : "";
+                results.push(`${medName} ${dose} SC ${schedule}`.trim());
+                return;
+            }
+            
+            // --- Generic Processing for Other Oral Medications ---
+            const genericMatch = cleanLine.match(/^(.*?)\s+(\d+(?:\.\d+)?(?:[\/\dA-Z\.]+)?\s*(?:MG|GM|MCG|UNT|ML))\s+(?:PO\s+)?([A-Z0-9]+(?:\s*PRN)?)/i);
+            if (genericMatch) {
+                let rawMed = genericMatch[1].trim();
+                let medName = cleanMedicineName(rawMed);
+                if (/EC/i.test(rawMed) && medName.indexOf("EC") === -1) {
+                medName += " EC";
+                }
+                let dose = genericMatch[2].trim().toUpperCase();
+                let schedule = genericMatch[3].trim().toUpperCase();
+                results.push(`${medName} ${dose} ${schedule}`.trim());
+                return;
+            }
+            results.push(cleanMedicineName(cleanLine));
+            }
+      
+        // ----------------------------
+        // Dispatcher: choose processing branch
+        // ----------------------------
+        function processLineDispatcher(line, results) {
+          if (processTopical(line, results)) return;
+          if (processInfusion(line, results)) return;
+          if (processHypoglycemiaMeds(line, results)) return;
+          processOther(line, results);
+        }
+      
+        // ----------------------------
+        // Main Extraction Function
+        // ----------------------------
+        function extractInfo() {
+          const input = document.getElementById('input').value;
+          const lines = input.split('\n');
+          const results = [];
+          let currentLine = "";
+          lines.forEach(line => {
+            if (/^\d+\)/.test(line)) {
+              if (currentLine) {
+                processLineDispatcher(currentLine, results);
+              }
+              currentLine = line.trim();
+            } else {
+              currentLine += " " + line.trim();
+            }
+          });
+          if (currentLine) {
+            processLineDispatcher(currentLine, results);
+          }
+          document.getElementById('output').value = results.join('\n');
+          document.getElementById('countOutput').value = results.length;
+          const prnMeds = results.filter(entry => entry.includes("PRN"));
+          document.getElementById('prnOutput').value = prnMeds.join('\n');
+          document.getElementById('countPRNOutput').value = prnMeds.length;
+          if (results.length > 0) {
+            button2.classList.add('active');
+          } else {
+            button2.classList.remove('active');
+          }
+        }
+      
+        // ----------------------------
+        // Utility Functions: Clear, Copy, etc.
+        // ----------------------------
+        function clearFields() {
+          document.getElementById('input').value = "";
+          document.getElementById('output').value = "";
+          document.getElementById('prnOutput').value = "";
+          document.getElementById('countOutput').value = "";
+          button.classList.remove('active');
+          button2.classList.remove('active');
+          document.getElementById('countPRNOutput').value = "";
+        }
+      
+        function copyOutput() {
+          const outputText = document.getElementById('output');
+          outputText.select();
+          outputText.setSelectionRange(0, 99999);
+          document.execCommand('copy');
+          button2.classList.remove('active');
+        }
+      
+        function copyOutputPRN() {
+          const outputText = document.getElementById('prnOutput');
+          outputText.select();
+          outputText.setSelectionRange(0, 99999);
+          document.execCommand('copy');
+        }
+      
+        function togglePrnOutput() {
+          const prnOutputEl = document.getElementById('prnOutput');
+          const countPRNOutputEl = document.getElementById('countPRNOutput');
+          const prnTitleEl = document.getElementById('prnTitle');
+          const prnCountTitleEl = document.getElementById('prnCountTitle');
+          const copyButtonPREl = document.getElementById('copyButtonPRN');
+          if (showPrnCheckbox.checked) {
+            prnOutputEl.classList.remove('hidden');
+            countPRNOutputEl.classList.remove('hidden');
+            prnTitleEl.classList.remove('hidden');
+            prnCountTitleEl.classList.remove('hidden');
+            copyButtonPREl.classList.remove('hidden');
+          } else {
+            prnOutputEl.classList.add('hidden');
+            countPRNOutputEl.classList.add('hidden');
+            prnTitleEl.classList.add('hidden');
+            prnCountTitleEl.classList.add('hidden');
+            copyButtonPREl.classList.add('hidden');
+          }
+        }
+      
+        function toLowerCase() {
+          const outputText = document.getElementById('output').value;
+          document.getElementById('output').value = outputText.toLowerCase();
+        }
+      
+        function toUpperCase() {
+          let inputText = document.getElementById("output").value;
+          document.getElementById("output").value = inputText.toUpperCase();
+        }
+      
+        function toSentenceCase() {
+          const outputText = document.getElementById('output').value;
+          let lines = outputText.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            lines[i] = lines[i].charAt(0).toUpperCase() + lines[i].slice(1).toLowerCase();
+          }
+          document.getElementById('output').value = lines.join('\n');
+        }
+      
+        // ----------------------------
+        // Event Listeners
+        // ----------------------------
+        textArea.addEventListener('input', () => {
+          if (textArea.value.trim()) {
+            button.classList.add('active');
+          } else {
+            button.classList.remove('active');
+          }
+        });
+      
+        button.addEventListener('click', () => {
+          button.classList.remove('active');
+          extractInfo();
+        });
+      
+        button2.addEventListener('click', () => {
+          button2.classList.remove('active');
+          copyOutput();
+        });
+      </script>
+      
+      
+      
+</html>
