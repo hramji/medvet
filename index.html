@@ -69,6 +69,15 @@
   function gtag(){dataLayer.push(arguments);}
   gtag('js', new Date());
 
+  gtag('event', 'medRecButton', {
+  'event_category': 'Button',
+  'event_label': 'Med Rec Button'
+  });
+  gtag('event', 'copyButton', {
+  'event_category': 'Button',
+  'event_label': 'Copy Button'
+  });
+
   gtag('config', 'G-Q71V1T0M1K');
 </script>
 <body>
